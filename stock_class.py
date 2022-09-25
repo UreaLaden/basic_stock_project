@@ -9,6 +9,7 @@ from daily_data import DailyData
 from datetime import datetime
 from tabulate import tabulate
 import account_class as accounts
+from matplotlib import pyplot as plt
 
 class Stock:
 
@@ -26,12 +27,12 @@ class StockData:
     def add_stock(self):
         print("--- Add Stock ---")
         while True:
-            symbol = input("Enter Ticker Symbol: ")
-            companyName = input("Enter Company Name: ")
+            symbol = input("Enter Ticker Symbol: ").upper()
+            companyName = input("Enter Company Name: ").capitalize()
             numShares = float(input("Enter Number of Shares: "))
             newStock = Stock(symbol,companyName,numShares)
             self.stock_list.append(newStock)
-            option = input(f'Received {numShares} shares of {companyName.capitalize()} stock -- Press Enter to Add Another Stock or 0 to Stop: ')
+            option = input(f'Received {numShares} shares of {companyName} stock -- Press Enter to Add Another Stock or 0 to Stop: ')
             if option == '0':
                 return
     # Remove stock and all daily data
@@ -131,4 +132,34 @@ class StockData:
     # Get price and volume history from Yahoo! Finance using CSV import.
     def import_stock_csv(self):
         print("This method is under construction")
-
+    # Function to create stock chart
+    def display_stock_chart(self,symbol):
+        dates = []
+        prices = []
+        volumes = [] 
+        company = ""
+        for stock in self.stock_list:
+            if(stock.symbol == symbol):
+                company = stock.company_name
+                for data in stock.daily_data:
+                    dates.append(data.date)
+                    prices.append(data.closing_price)
+                    volumes.append(data.volume)
+        plt.plot(dates,prices,'ro-',linewidth=5,markersize=5,alpha=0.35)
+        plt.xlabel('Date')
+        plt.ylabel('Price')
+        plt.title(company)
+        plt.show()
+    # Display Chart
+    def display_chart(self):
+        print("\n----------Display Chart-----------")
+        currentStocks = [i.symbol for i in self.stock_list]
+        print(f'Stock List: {currentStocks}')
+        symbol = input('Which stock to you want to display? ').upper()
+        filteredList = list(filter(lambda x:x.symbol == symbol,self.stock_list))
+        found = True if len(filteredList) > 0 else False
+        if found == True:
+            self.display_stock_chart(symbol)
+        else:
+            print(f'Symbol: {symbol} not found')
+            self.delay()

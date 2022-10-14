@@ -16,12 +16,15 @@ import csv,glob,sys
 from os import system,name
 
 class Stock:
-
+    """Parameters: symbol,company_name,num_shares,daily_data"""
     def __init__(self,symbol:str='',company_name:str='',num_shares:float=0,daily_data:list[DailyData]=[]):
         self.symbol = symbol
         self.company_name = company_name
         self.num_shares = num_shares
         self.daily_data = daily_data
+    
+    def add_data(self,data:DailyData):
+        self.daily_data.append(data)
 
 class StockData:
 
@@ -96,6 +99,7 @@ class StockData:
                 else:
                     self.delay()
                 return
+    
     # Pause for user confirmation to continue
     def delay(self):
         _ = input('\t\t--- Press Enter to Continue ---')

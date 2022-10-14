@@ -8,13 +8,17 @@ from os import path
 from tkinter import *
 from tkinter import ttk
 from tkinter import messagebox,simpledialog,filedialog
-import csv
+import csv,sys
 import matplotlib.pyplot as plt
 import json
 
 class StockApp:
     def __init__(self):
         self.stock_list:list[Stock] = []
+        self.tabChanged = False
+        self.currentTabIndex = 0
+        self.lastSelect = ''
+        self.currentStocks = {}
 
         # Create Window
         self.root = Tk()
@@ -36,7 +40,9 @@ class StockApp:
         self.root.config(menu=self.menubar)
 
         # Add heading information
-        self.headingLabel = Label(self.root,text="No Stock Selected")
+        self.headingText:StringVar = StringVar()
+        self.headingText.set('No Stock Selected')
+        self.headingLabel = Label(self.root,textvariable=self.headingText)
         self.headingLabel.grid(column=0,row=0,columnspan=3,padx=5,pady=10)
 
         # Add stock list
@@ -57,6 +63,7 @@ class StockApp:
         self.notebook.add(self.mainFrame,text='Manage')
         self.notebook.add(self.stockDataFrame,text='History')
         self.notebook.add(self.reportFrame,text='Report')
+        self.notebook.bind('<<NotebookTabChanged>>',self.notebook_changed)
 
         # Set Up Main Tab
         self.addStockGroup = LabelFrame(self.mainFrame,text="Add Stock",padx=5,pady=5)
@@ -77,7 +84,7 @@ class StockApp:
         self.addSharesEntry = Entry(self.addStockGroup)
         self.addSharesEntry.grid(column=1,row=2,padx=5,pady=5)
 
-        self.addStockButton = Button(self.addStockGroup,text="New Stock",command = self.add_stock)
+        self.addStockButton = Button(self.addStockGroup,text="Add Stock",command = self.add_stock)
         self.addStockButton.grid(column=0,row=3,columnspan=2,padx=5,pady=5)
         
         self.deleteGroup = LabelFrame(self.mainFrame,text="Delete Stock")
@@ -87,6 +94,7 @@ class StockApp:
         self.deleteStockButton.grid(column=0,row=0,padx=5,pady=5)
 
         # Setup History Tab
+        self.dailyDataText = StringVar()        
         self.dailyDataList = Text(self.stockDataFrame,width=40)
         self.dailyDataList.grid(column=0,row=0,padx=5,pady=5)
 
@@ -96,58 +104,109 @@ class StockApp:
 
         self.root.mainloop()
     
+    def notebook_changed(self,*args):
+        # if(self.currentTabIndex != self.notebook.index(self.notebook.select())):
+        #     print(nb.index(nb.select()),' ',nb.tab(nb.select(),"text"))
+        #     self.currentTabIndex = self.notebook.index(self.notebook.select())
+        currentTab = self.notebook.index(self.notebook.select())
+        stockSelected = self.lastSelect != ''
+         
+        self.reset_daily_data_list()
+        match currentTab:
+            case 0:
+                return
+            case 1:
+                self.populate_data_history()
+            case 2:                         
+                self.populate_report_summary()
+            case default:
+                print(f'On {self.notebook.tab(self.notebook.select(),"text")} Tab but No Stock Selected',currentTab)
+
     def update_data(self,evt):
         """Refresh history and report tabs"""
         self.display_stock_data()
 
-    def display_stock_data(self):
-        """Display stock price and volume history"""
-        if(self.stockList.curselection()):
-            symbol:str = self.stockList.get(self.stockList.curselection())
+    def populate_data_history(self):
+        if self.lastSelect == '': 
+            return
 
-            for stock in self.stock_list:
-                self.headingLabel['text'] = stock.company_name + " - " + str(stock.num_shares) + " Shares"
-                self.dailyDataList.delete("1.0",END)
-                self.stockReport.delete("1.0",END)
-                self.dailyDataList.insert(END,"-Date-  -Price- -Volume-\n")
-            
-            self.dailyDataList.insert(END,"========================================\n")
-            for daily_data in stock.daily_data:
+        s = self.stockList.get(self.stockList.curselection())
+        target = [i for i in self.stock_list if i.symbol == s][0]
+        if len(target.daily_data) > 0:
+
+            for daily_data in target.daily_data:
                 close = daily_data.closing_price
                 row = daily_data.date + "  " + '${:.2}'.format(close) + "  " + str(daily_data.volume) + "\n"
                 self.dailyDataList.insert(END,row)
+
+    def populate_report_summary(self):
+        stocks = self.currentStocks
+        symbol = self.stockList.get(self.stockList.curselection())
+        
+        #display report
+        count = 0
+        price_total = 0.00
+        volume_total = 0.00
+        lowPrice = sys.maxsize
+        highPrice = 0.00
+        lowVolume = sys.maxsize
+        highVolume = sys.maxsize    
+
+        for daily_data in stocks[symbol]['daily_data']:
+            count = count + 1
+            price_total = price_total + float(daily_data.closing_price)
+            volume_total = volume_total + float(daily_data.volume)
+            lowPrice = min(float(daily_data.closing_price),lowPrice)
+            lowVolume = min(float(daily_data.volume),lowVolume)
+            highVolume = max(float(daily_data.volume),highVolume)
+            highPrice = max(float(daily_data.closing_price),highPrice)
+            priceChange = lowPrice - highPrice
+        
+        if count > 0:
+            self.stockReport.insert(END,"Summary Data--\n\n")
+            self.stockReport.insert(END,"Low Price: " + "${:,.2f}".format(lowPrice) + "\n")
+            self.stockReport.insert(END,"High Price: " + "${:,.2f}".format(highPrice) + "\n")
+            self.stockReport.insert(END,"Average Price: " + "${:,.2f}".format(price_total/count) + "\n")
+            self.stockReport.insert(END,"Low Volume: " + str(lowVolume) + "\n")
+            self.stockReport.insert(END,"High Volume: " + str(highVolume) + "\n")
+            self.stockReport.insert(END,"Average Volume: " + str(volume_total/count) + "\n\n")
+            self.stockReport.insert(END,"Change in Price: " + "${:,.2f}".format(priceChange) + "\n")
+            self.stockReport.insert(END,"Profit/Loss: " + "${:,.2f}".format(priceChange * stocks[symbol]['shares']) + "\n")
+        else:
+            self.stockReport.insert(END,"*** No daily history. ***")
+
+    def populate_stocks(self) -> dict :
+        stocks = dict()
+        if len(self.stock_list) >= 1:
+            for i in self.stock_list:
+                stocks[i.symbol] = {}
+                stocks[i.symbol]['name'] = i.company_name
+                stocks[i.symbol]['shares'] = i.num_shares
+                stocks[i.symbol]['daily_data'] = i.daily_data
+        return stocks
+
+    def reset_daily_data_list(self):
+        for stock in self.stock_list:
+            self.dailyDataList.delete("1.0",END)
+            self.stockReport.delete("1.0",END)
+            self.dailyDataList.insert(END,"-Date-  -Price- -Volume-\n")
+            self.dailyDataList.insert(END,"==============================\n")
+
+    def display_stock_data(self):
+        """Display stock price and volume history"""
+        self.currentStocks = self.populate_stocks()
+        self.tabChanged = self.currentTabIndex != self.notebook.index(self.notebook.select())
+        
+        if(self.stockList.curselection()):                        
+            symbol:str = self.stockList.get(self.stockList.curselection())            
+            self.lastSelect = symbol
+            self.headingText.set(f"{self.currentStocks[symbol]['name']} - {self.currentStocks[symbol]['shares']} Shares")
             
-            #display report
-            count = 0
-            price_total = 0.00
-            volume_total = 0.00
-            lowPrice = 999999.999
-            highPrice = 0.00
-            lowVolume = 999999999999
-            highVolume = 0
-
-            for daily_data in stock.daily_data:
-                count = count + 1
-                price_total = price_total + float(daily_data.closing_price)
-                volume_total = volume_total + float(daily_data.volume)
-                lowPrice = min(float(daily_data.closing_price),lowPrice)
-                lowVolume = min(float(daily_data.volume),lowVolume)
-                highVolume = max(float(daily_data.volume),highVolume)
-                highPrice = max(float(daily_data.closing_price),highPrice)
-                priceChange = lowPrice - highPrice
-
-            if count > 0:
-                self.stockReport.insert(END,"Summary Data--\n\n")
-                self.stockReport.insert(END,"Low Price: " + "${:,.2f}".format(lowPrice) + "\n")
-                self.stockReport.insert(END,"High Price: " + "${:,.2f}".format(highPrice) + "\n")
-                self.stockReport.insert(END,"Average Price: " + "${:,.2f}".format(price_total/count) + "\n")
-                self.stockReport.insert(END,"Low Volume: " + str(lowVolume) + "\n")
-                self.stockReport.insert(END,"High Volume: " + str(highVolume) + "\n")
-                self.stockReport.insert(END,"Average Volume: " + str(volume_total/count) + "\n\n")
-                self.stockReport.insert(END,"Change in Price: " + "${:,.2f}".format(priceChange) + "\n")
-                self.stockReport.insert(END,"Profit/Loss: " + "${:,.2f}".format(priceChange * stock.num_shares) + "\n")
-            else:
-                self.stockReport.insert(END,"*** No daily history.")
+            self.reset_daily_data_list()                             
+            self.populate_data_history()
+            self.populate_report_summary()
+            
+            
 
     def add_stock(self):
         """Add new stock to track"""
@@ -155,7 +214,7 @@ class StockApp:
             if stock.symbol == self.addSymbolEntry.get():
                 messagebox.showinfo("Invalid Operation",f"{stock.symbol} is already in the collection")
                 return
-        new_stock = Stock(self.addSymbolEntry.get(),self.addNameEntry.get(),float(self.addSharesEntry.get()))
+        new_stock = Stock(self.addSymbolEntry.get(),self.addNameEntry.get(),float(self.addSharesEntry.get()),[])
         self.stock_list.append(new_stock)
         self.stockList.insert(END,self.addSymbolEntry.get())
         self.addSymbolEntry.delete(0,END)
@@ -164,44 +223,42 @@ class StockApp:
 
     def delete_stock(self):
         """Remove stock and all history from being tracked"""
-        symbol = self.stockList.curselection()
-        idx = 0
-        for stock in self.stock_list:
-            if stock.symbol == symbol:
+        selection = self.stockList.curselection()
+        symbol = self.stockList.get(selection)
+        for idx,val in enumerate(self.stock_list):
+            
+            if val.symbol == symbol:
+                print('Deleting ',symbol)
                 self.stock_list.pop(idx)
-            idx += 1
-        self.display_stock_data()
+            
         self.stockList.delete(0,END)
-        for stock in self.stock_list:
-            if stock.symbol == symbol:
-                self.stockList.insert(END,stock.symbol)
+        self.display_stock_data()
+        for stock in self.stock_list:            
+            self.stockList.insert(END,stock.symbol)
 
-        messagebox.showinfo("Stock Deleted", symbol + " Removed")
+        messagebox.showinfo("Stock Deleted",f" Removed {symbol}")
 
     # Get price and volume history from Yahoo! Finance using CSV import
     def import_stock_csv(self,stock_list:list[Stock],symbol:str,filename:str):
-        for stock in stock_list:
-            if stock.symbol == symbol:
-                with open(filename,'r') as data:
-                    symbol = data.name.split('.')[0]                    
-                    reader = csv.reader(data,delimiter=',')
-                    next(reader)
-                    dataCount = 0
-                    for idx,row in enumerate(reader):
-                        date = row[0]
-                        close = row[4]
-                        volume = row[-1]
-                        if len(self.stock_list) <= 0:
-                            # If we don't have the selected Stock at to our list
-                            self.stockList.insert(END,symbol)
-                            self.stock_list.append(Stock(symbol,symbol))
-                        for stock in self.stock_list:
-                            if stock.symbol == symbol.split('/')[-1]:
-                                dailyData = DailyData(date,close,volume)
-                                print(dailyData)
-                                stock.add_data(dailyData)
-                            dataCount = idx
-                    print(f'Imported {dataCount} rows of data')
+        stock = [i for i in stock_list if i.symbol == symbol][0]
+        with open(filename,'r') as data:
+            _symbol = data.name.split('.')[0].split('/')[-1]                    
+            reader = csv.reader(data,delimiter=',')
+            next(reader)
+            dataCount = 0
+            print('Importing data for  ',_symbol)
+            for idx,row in enumerate(reader):
+                date = row[0]
+                close = row[4]
+                volume = row[-1]
+                
+                for i in self.stock_list:
+                    if i.symbol == _symbol:
+                        dailyData = DailyData(date,close,volume)
+                        stock.daily_data.append(dailyData)
+                        dataCount = idx - 1                   
+            print(f'Imported {dataCount} rows of data')
+
 
     def importCSV_web_data(self):
         """Import CSV stock history file"""
@@ -214,7 +271,24 @@ class StockApp:
 
     def display_chart(self):
         """Display stock price chart"""
-        messagebox.showinfo("This module is under construction")
+        symbol = self.stockList.get(self.stockList.curselection())
+        date:list[datetime] = []
+        price:list[float] = []
+        volume:list[int] = []
+        company = ""
+        for stock in self.stock_list:
+            if stock.symbol == symbol:
+                company = stock.company_name 
+                for dailyData in stock.daily_data:
+                    new_date = datetime.strptime(dailyData.date,'%Y-%m-%d')
+                    date.append(new_date)
+                    price.append(float(dailyData.closing_price))
+                    volume.append(dailyData.volume)
+                plt.plot(date,price)
+                plt.xlabel('Date')
+                plt.ylabel('Price')
+                plt.title(company)
+                plt.show()
 
 def main():
     app = StockApp()

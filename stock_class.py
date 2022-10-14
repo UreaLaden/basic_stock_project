@@ -26,6 +26,9 @@ class Stock:
     def add_data(self,data:DailyData):
         self.daily_data.append(data)
 
+    def __str__(self):
+        return f'Stock({self.symbol}, {self.company_name}, {self.num_shares}, DailyData Length: {len(self.daily_data)})'
+
 class StockData:
 
     def __init__(self,stock_list:list[Stock]=[]):
